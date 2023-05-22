@@ -1,7 +1,8 @@
 <script lang="ts">
-	import Field from '$lib/Field.svelte';
-	import Form from '$lib/Form.svelte';
+	import _Field from '$lib/Field.svelte';
+	import _Form from '$lib/Form.svelte';
 	import { z } from 'zod';
+	import { Form, Field } from '../../dist/index.js';
 </script>
 
 <Form

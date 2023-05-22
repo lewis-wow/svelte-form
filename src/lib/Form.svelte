@@ -7,9 +7,10 @@
 
 	type Values = $$Generic<Record<string, unknown>>;
 	export let initialValues: Values;
-	export let validationSchema: z.Schema<Values>;
+	export let validationSchema: z.Schema<Values> | undefined = undefined;
+	export let validate: ((values: Values) => Errors<Values> | Promise<Errors<Values>>) | undefined;
 	export let initialTouched: Touched<Values> | undefined = undefined;
-	export let initialErrors: Errors<Values, z.Schema<Values>> | undefined = undefined;
+	export let initialErrors: Errors<Values> | undefined = undefined;
 	export let onSubmit: (bag: Bag<Values, true>) => Promise<void>;
 	export let validateOnBlur = true;
 	export let validateOnChange = true;
@@ -23,6 +24,7 @@
 		initialErrors,
 		validateOnBlur,
 		validateOnChange,
+		validate,
 		onSubmit
 	});
 
@@ -43,13 +45,13 @@
 		handleChange,
 		handleSubmit,
 		resetForm,
-		validate
+		validate: validationFunction
 	} = form;
 
 	setContext('__svelte-form', form);
 
 	onMount(() => {
-		if (validateOnMount) validate();
+		if (validateOnMount) validationFunction();
 	});
 </script>
 

@@ -7,9 +7,10 @@ import { getContext } from 'svelte';
 
 export type CreateFormArgs<Values extends Record<string, unknown>> = {
 	initialValues: Values;
-	validationSchema: z.Schema<Values>;
+	validationSchema?: z.Schema<Values>;
+	validate?: (values: Values) => Errors<Values> | Promise<Errors<Values>>;
 	initialTouched?: Touched<Values> | null | undefined;
-	initialErrors?: Errors<Values, z.Schema<Values>> | null | undefined;
+	initialErrors?: Errors<Values> | null | undefined;
 	onSubmit: (bag: Bag<Values, true>) => void | Promise<void>;
 	validateOnChange?: boolean;
 	validateOnBlur?: boolean;
@@ -17,9 +18,7 @@ export type CreateFormArgs<Values extends Record<string, unknown>> = {
 
 export interface Bag<Values extends Record<string, unknown>, isSubscribed extends boolean = false> {
 	values: isSubscribed extends true ? Values : Writable<Values>;
-	errors: isSubscribed extends true
-		? Errors<Values, z.Schema<Values>>
-		: Writable<Errors<Values, z.Schema<Values>>>;
+	errors: isSubscribed extends true ? Errors<Values> : Writable<Errors<Values>>;
 	touched: isSubscribed extends true ? Touched<Values> : Writable<Touched<Values>>;
 	isSubmitting: isSubscribed extends true ? boolean : Writable<boolean>;
 	isValidating: isSubscribed extends true ? boolean : Writable<boolean>;
@@ -28,15 +27,15 @@ export interface Bag<Values extends Record<string, unknown>, isSubscribed extend
 	submitSuccessCount: isSubscribed extends true ? number : Writable<number>;
 	isValid: isSubscribed extends true ? boolean : Readable<boolean>;
 	isDirty: isSubscribed extends true ? boolean : Readable<boolean>;
-	resetForm: (nextInitialState?: ResetFormArgs<Values, z.Schema<Values>>) => void;
+	resetForm: (nextInitialState?: ResetFormArgs<Values>) => void;
 	setFieldTouched: (field: Field<Values>, isTouched: boolean, shouldValidate?: boolean) => void;
 	setFieldValue: (field: Field<Values>, value: unknown, shouldValidate?: boolean) => void;
 	setFieldError: (field: Field<Values>, error: string[]) => void;
 	setTouched: (fields: Touched<Values>, shouldValidate?: boolean) => void;
 	setValues: (fields: Values, shouldValidate?: boolean) => void;
-	setErrors: (fields: Errors<Values, z.Schema<Values>>) => void;
-	validate: () => Promise<Writable<Errors<Values, z.Schema<Values>>>>;
-	validateField: (field: Field<Values>) => Promise<Writable<Errors<Values, z.Schema<Values>>>>;
+	setErrors: (fields: Errors<Values>) => void;
+	validate: () => Promise<Writable<Errors<Values>>>;
+	validateField: (field: Field<Values>) => Promise<Writable<Errors<Values>>>;
 	submitForm: () => Promise<void>;
 	handleChange: (node: HTMLInputElement, name: Field<Values>) => ActionReturn;
 	handleSubmit: (e?: SubmitEvent) => void;
@@ -48,6 +47,7 @@ export const createForm = <Values extends Record<string, unknown>>({
 	initialTouched,
 	validationSchema,
 	onSubmit,
+	validate: validationFunction,
 	validateOnChange = true,
 	validateOnBlur = true
 }: CreateFormArgs<Values>) => {
@@ -55,8 +55,8 @@ export const createForm = <Values extends Record<string, unknown>>({
 		initialTouched ??
 		Object.keys(initialValues).reduce((acc, key) => ({ ...acc, [key]: false }), {});
 
-	const _initialErrors: Errors<Values, z.Schema<Values>> = initialErrors ??
-	Object.keys(initialValues).reduce((acc, key) => ({ ...acc, [key]: null }), {});
+	const _initialErrors: Errors<Values> =
+		initialErrors ?? Object.keys(initialValues).reduce((acc, key) => ({ ...acc, [key]: null }), {});
 
 	const values = writable(initialValues);
 	const errors = writable(_initialErrors);
@@ -74,7 +74,7 @@ export const createForm = <Values extends Record<string, unknown>>({
 
 	const isDirty = derived([values], ([$values]) => isDeeplyEqual($values, initialValues));
 
-	const resetForm = (nextInitialState?: ResetFormArgs<Values, typeof validationSchema>) => {
+	const resetForm = (nextInitialState?: ResetFormArgs<Values>) => {
 		const nextValues = nextInitialState ? nextInitialState?.values ?? initialValues : initialValues;
 		const nextErrors = nextInitialState
 			? nextInitialState?.errors ?? _initialErrors
@@ -120,7 +120,7 @@ export const createForm = <Values extends Record<string, unknown>>({
 		if (shouldValidate) validate();
 	};
 
-	const setErrors = (fields: Errors<Values, typeof validationSchema>) => {
+	const setErrors = (fields: Errors<Values>) => {
 		errors.update((e) => ({ ...e, ...fields }));
 	};
 
@@ -162,9 +162,12 @@ export const createForm = <Values extends Record<string, unknown>>({
 		isSubmitting.set(false);
 	};
 
-	const validateField = async (
-		field?: Field<Values>
-	): Promise<Writable<Errors<Values, z.ZodType<Values, z.ZodTypeDef, Values>>>> => {
+	const validateField = async (field?: Field<Values>): Promise<Writable<Errors<Values>>> => {
+		if (validationFunction) {
+			errors.set(await validationFunction(get(values)));
+			return errors;
+		}
+
 		if (!validationSchema) return errors;
 
 		const result = await validationSchema.safeParseAsync(get(values));
